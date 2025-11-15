@@ -100,7 +100,7 @@ function processBlock(blockLines) {
 // -------------------------
 async function processPDF() {
     const file = document.getElementById("pdfInput").files[0];
-    if (!file) return alert("Select a PDF!");
+    if (!file) return showToast("⚠️ Please select a PDF", true);
 
     const raw = await readPDF(file);
     document.getElementById("resultBox").value = raw; // TEMP: show raw text
@@ -125,14 +125,44 @@ async function processPDF() {
 }
 
 // -------------------------
+// TOAST FUNCTION
+// -------------------------
+function showToast(message = "Copied ✓", isError = false) {
+    const toast = document.getElementById("toast");
+
+    toast.textContent = message;
+
+    if (isError) {
+        toast.style.background = "rgba(255, 60, 60, 0.25)";
+        toast.style.color = "#ff5757";
+        toast.style.borderColor = "rgba(255, 60, 60, 0.35)";
+    } else {
+        toast.style.background = "rgba(34, 197, 94, 0.25)";
+        toast.style.color = "#22c55e";
+        toast.style.borderColor = "rgba(34, 197, 94, 0.35)";
+    }
+
+    toast.classList.add("show");
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, 1800);
+}
+
+// -------------------------
+// COPY RESULT
+// -------------------------
 function copyResult() {
     navigator.clipboard.writeText(
         document.getElementById("resultBox").value
     );
-    alert("Copied!");
+    showToast("Copied ✓");
 }
 
+// -------------------------
+// PROCESS + COPY (one button)
+// -------------------------
 async function processAndCopy() {
-    await processPDF();   // 1) Process normally
-    copyResult();         // 2) Auto-copy output
+    await processPDF();
+    copyResult();
 }
