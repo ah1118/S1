@@ -131,3 +131,8 @@ function copyResult() {
     );
     alert("Copied!");
 }
+
+async function processAndCopy() {
+    await processPDF();   // 1) Process normally
+    copyResult();         // 2) Auto-copy output
+}
