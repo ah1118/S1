@@ -19,7 +19,7 @@ function getDateForParagraph() {
 
 
 // -------------------------
-// READ PDF FULLY
+// READ PDF (PDF.js)
 // -------------------------
 async function readPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
@@ -41,7 +41,7 @@ async function readPDF(file) {
 // -------------------------
 function cleanRawPDF(raw) {
 
-    // Remove airport tables entirely
+    // Remove airport table content
     raw = raw.replace(/AIR ALGERIE[\s\S]*?Total records[\s\S]*?\d+/gi, " ");
 
     // Normalize spaces
@@ -52,59 +52,55 @@ function cleanRawPDF(raw) {
 
 
 // -------------------------
-// Extract CZL flights (in order)
+// EXTRACT FLIGHTS (CZL - XXX ####)
 // -------------------------
 function extractFlights(cleaned) {
     let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)];
     return flights.map(m => ({
-        number: m[1],
+        number: m[1],   // 6190, 6194, 6027, etc.
         index: m.index  // position in text
     }));
 }
 
 
 // -------------------------
-// Extract crew lines
+// EXTRACT CREW LINES
 // -------------------------
 function extractCrewLines(cleaned) {
-    // Insert newlines before crew codes
+
+    // Restore line breaks artificially
     cleaned = cleaned.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
 
     let lines = cleaned.split("\n");
 
-    // Keep ONLY crew lines containing #
+    // Crew lines detected by rank code only
     let crew = lines
         .map(l => l.trim())
-        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l) && l.includes("#"))
-        .map(l => l.split("#")[0].trim()); // remove "after #"
+        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l));
 
     return crew;
 }
 
 
 // -------------------------
-// Group crew to closest CZL ABOVE (Python logic)
+// ASSIGN CREW TO NEAREST CZL ABOVE
 // -------------------------
 function groupCrewByFlight(flights, crewLines, cleaned) {
 
-    // Assign each crew line the index of its appearance in the raw text
     let positionedCrew = crewLines.map(cl => {
         let idx = cleaned.indexOf(cl);
         return { idx, text: cl };
     });
 
     let groups = {};
-
     flights.forEach(f => { groups[f.number] = []; });
 
     for (let c of positionedCrew) {
-
-        // Find the nearest CZL ABOVE this crew line
         let closest = null;
         let closestDist = Infinity;
 
         for (let f of flights) {
-            if (f.index < c.idx) {  
+            if (f.index < c.idx) {
                 let dist = c.idx - f.index;
                 if (dist < closestDist) {
                     closestDist = dist;
@@ -123,7 +119,7 @@ function groupCrewByFlight(flights, crewLines, cleaned) {
 
 
 // -------------------------
-// Build final AH blocks
+// BUILD AH BLOCKS
 // -------------------------
 function buildAHBlocks(groups) {
     let blocks = [];
@@ -131,7 +127,7 @@ function buildAHBlocks(groups) {
     for (let fn of Object.keys(groups)) {
         let sep = fn.length === 3 ? "-----" : "------";
 
-        blocks.push(""); // blank line
+        blocks.push("");
         blocks.push(`AH${fn}`);
         blocks.push(sep);
 
@@ -145,7 +141,7 @@ function buildAHBlocks(groups) {
 
 
 // -------------------------
-// MAIN PROCESSOR
+// MAIN FUNCTION
 // -------------------------
 async function processPDF() {
     let file = document.getElementById("pdfInput").files[0];
@@ -179,7 +175,7 @@ async function processPDF() {
 
 
 // -------------------------
-// COPY TO CLIPBOARD
+// COPY BUTTON
 // -------------------------
 function copyResult() {
     const text = document.getElementById("resultBox").value;
