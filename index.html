@@ -1,94 +1,74 @@
-function processPythonStyle(rawText) {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CZL PDF Extractor</title>
 
-    const lines = rawText.split(/\r?\n/);
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
 
-    let results = [];
-    let block = [];
-    let insideBlock = false;
-
-    for (let line of lines) {
-
-        if (line.includes("CZL -")) {  // start of block
-            if (block.length > 0) {
-                results.push(...processBlock(block));
-                block = [];
-            }
-            insideBlock = true;
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
         }
 
-        if (insideBlock) {
-            block.push(line);
-        }
-    }
-
-    // last block
-    if (block.length > 0) {
-        results.push(...processBlock(block));
-    }
-
-    return results;
-}
-
-// SAME LOGIC AS PYTHON process_block()
-function processBlock(blockLines) {
-    let tempBlock = [];
-    let digit = null;
-
-    for (let line of blockLines) {
-
-        // FIND 3–4 DIGIT FLIGHT NUMBER ON CZL LINE
-        if (line.includes("CZL -")) {
-            const m = line.match(/\b\d{3,4}\b/);
-            if (m) digit = m[0];
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
 
-        // CREW LINE MUST CONTAIN #
-        if (line.includes("#")) {
-            const km = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
-            if (km) {
-                const start = km.index;
-                const sliced = line.slice(start);
-                const cleaned = sliced.split("#")[0].trim();
-                tempBlock.push(cleaned);
-            }
+        textarea {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 14px;
+            border-radius: 6px;
         }
-    }
 
-    if (digit && tempBlock.length > 0) {
-        const sep = digit.length === 3 ? "-----" : "------";
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
 
-        return [
-            "",
-            `AH${digit}`,
-            sep,
-            ...tempBlock
-        ];
-    }
+        #copyBtn {
+            background: #0066ff;
+            color: white;
+        }
 
-    return [];
-}
+        #processBtn {
+            background: #009933;
+            color: white;
+        }
+    </style>
+</head>
 
+<body>
+<div class="container">
+    <h2>CZL PDF Extractor</h2>
 
-// MAIN WRAPPER FOR BUTTON
-function buildFinalOutput() {
-    const raw = document.getElementById("rawInput").value;
+    <input type="file" id="pdfInput" accept="application/pdf">
 
-    let blocks = processPythonStyle(raw);
+    <br><br>
 
-    let header = [
-        "DEAR ON DUTY",
-        `PLEASE PROCEED WITH RESERVING SEATS FOR S1 AS LISTED BELOW FOR ${getDateForParagraph()}`,
-        ""
-    ];
+    <button id="processBtn" onclick="processPDF()">Process PDF</button>
+    <button id="copyBtn" onclick="copyResult()">Copy Output</button>
 
-    let footer = [
-        "",
-        "KIND REGARDS",
-        "OPS CZL TEAM",
-        "BOUTOUT"
-    ];
+    <textarea id="resultBox" placeholder="Output will appear here..."></textarea>
+</div>
 
-    const finalText = [...header, ...blocks, ...footer].join("\n").trim();
+<script src="script.js"></script>
 
-    document.getElementById("resultBox").value = finalText;
-}
+</body>
+</html>
