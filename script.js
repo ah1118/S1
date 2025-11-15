@@ -41,8 +41,8 @@ async function readPDF(file) {
 // -------------------------
 function cleanRawPDF(raw) {
 
-    // Remove garbage airport tables
-    raw = raw.replace(/AIR ALGERIE[\s\S]*?records\s*:\s*\d+/gi, " ");
+    // Remove airport tables entirely
+    raw = raw.replace(/AIR ALGERIE[\s\S]*?Total records[\s\S]*?\d+/gi, " ");
 
     // Normalize spaces
     raw = raw.replace(/\s+/g, " ").trim();
@@ -52,60 +52,92 @@ function cleanRawPDF(raw) {
 
 
 // -------------------------
-// Extract crew segments
+// Extract CZL flights (in order)
 // -------------------------
-function splitIntoCrewEntries(cleaned) {
-    // Insert newline before crew codes
+function extractFlights(cleaned) {
+    let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)];
+    return flights.map(m => ({
+        number: m[1],
+        index: m.index  // position in text
+    }));
+}
+
+
+// -------------------------
+// Extract crew lines
+// -------------------------
+function extractCrewLines(cleaned) {
+    // Insert newlines before crew codes
     cleaned = cleaned.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
 
-    // Split by newline
     let lines = cleaned.split("\n");
 
-    // Keep only crew lines
-    let crew = lines.filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l.trim()));
+    // Keep ONLY crew lines containing #
+    let crew = lines
+        .map(l => l.trim())
+        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l) && l.includes("#"))
+        .map(l => l.split("#")[0].trim()); // remove "after #"
 
     return crew;
 }
 
 
 // -------------------------
-// Extract flight segments
+// Group crew to closest CZL ABOVE (Python logic)
 // -------------------------
-function extractFlights(cleaned) {
-    // Find all occurrences like: CZL - XXX ####
-    let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)]
-        .map(m => m[1]);
+function groupCrewByFlight(flights, crewLines, cleaned) {
 
-    return flights;
+    // Assign each crew line the index of its appearance in the raw text
+    let positionedCrew = crewLines.map(cl => {
+        let idx = cleaned.indexOf(cl);
+        return { idx, text: cl };
+    });
+
+    let groups = {};
+
+    flights.forEach(f => { groups[f.number] = []; });
+
+    for (let c of positionedCrew) {
+
+        // Find the nearest CZL ABOVE this crew line
+        let closest = null;
+        let closestDist = Infinity;
+
+        for (let f of flights) {
+            if (f.index < c.idx) {  
+                let dist = c.idx - f.index;
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closest = f.number;
+                }
+            }
+        }
+
+        if (closest) {
+            groups[closest].push(c.text);
+        }
+    }
+
+    return groups;
 }
 
 
 // -------------------------
-// Build AH blocks
+// Build final AH blocks
 // -------------------------
-function buildAHBlocks(flightNumbers, crewLines) {
+function buildAHBlocks(groups) {
     let blocks = [];
 
-    let crewIndex = 0;
-
-    for (let fn of flightNumbers) {
+    for (let fn of Object.keys(groups)) {
         let sep = fn.length === 3 ? "-----" : "------";
 
-        let block = ["", `AH${fn}`, sep];
+        blocks.push(""); // blank line
+        blocks.push(`AH${fn}`);
+        blocks.push(sep);
 
-        // Add crew lines sequentially
-        while (crewIndex < crewLines.length) {
-            let l = crewLines[crewIndex];
-
-            // Stop when next flight appears in raw order
-            // (We already mapped flights sequentially)
-            if (/CZL\s*-\s*\w+\s+/.test(l)) break;
-
-            block.push(l);
-            crewIndex++;
+        for (let crew of groups[fn]) {
+            blocks.push(crew);
         }
-
-        blocks.push(...block);
     }
 
     return blocks;
@@ -122,10 +154,11 @@ async function processPDF() {
     let raw = await readPDF(file);
     let cleaned = cleanRawPDF(raw);
 
-    let crewLines = splitIntoCrewEntries(cleaned);
-    let flightNumbers = extractFlights(cleaned);
+    let flights = extractFlights(cleaned);
+    let crewLines = extractCrewLines(cleaned);
 
-    let blocks = buildAHBlocks(flightNumbers, crewLines);
+    let grouped = groupCrewByFlight(flights, crewLines, cleaned);
+    let blocks = buildAHBlocks(grouped);
 
     let header = [
         "DEAR ON DUTY",
