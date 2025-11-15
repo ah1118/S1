@@ -1,5 +1,5 @@
 // -------------------------
-// PDF.js WORKER (MANDATORY)
+// PDF.js worker
 // -------------------------
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js";
@@ -9,17 +9,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 // DATE FUNCTION
 // -------------------------
 function getDateForParagraph() {
-    let now = new Date();
-    let d = new Date();
+    const now = new Date();
+    const d = new Date();
 
     if (now.getHours() >= 18) {
         d.setDate(d.getDate() + 1);
     }
 
     const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-    let dd = String(d.getDate()).padStart(2, "0");
-    let mm = months[d.getMonth()];
-    let yy = d.getFullYear().toString().slice(2);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = months[d.getMonth()];
+    const yy = d.getFullYear().toString().slice(2);
 
     return `${dd}${mm}${yy}`;
 }
@@ -36,167 +36,124 @@ async function readPDF(file) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
 
-        text += content.items.map(it => it.str).join(" ") + " ";
+        // Items already contain newlines in this PDF, so just join
+        text += content.items.map(it => it.str).join(" ") + "\n";
     }
 
-    console.log("RAW PDF TEXT:", text);   // Debug
+    console.log("RAW PDF TEXT:\n", text);
     return text;
 }
 
 
 // -------------------------
-// CLEAN RAW PDF TEXT (IMPORTANT FIX)
+// PROCESS ONE CZL BLOCK  (same as Python process_block)
 // -------------------------
-function cleanRawPDF(raw) {
+function processBlock(blockLines) {
+    let tempBlock = [];
+    let digit = null;
 
-    raw = raw.replace(/AIR ALGERIE[\s\S]*?Total records[\s\S]*?\d+/gi, " ");
+    for (let line of blockLines) {
+        // 1) find flight number on CZL line (3 or 4 digits)
+        if (line.includes("CZL")) {
+            const m = line.match(/\b\d{3,4}\b/);
+            if (m) digit = m[0];
+        }
 
-    // FIX PDF.js BROKEN TEXT:
-    // Example: "C P  B O U T A L E B" → "CP BOUTALEB"
-    raw = raw.replace(/(?:\b[A-Z]\s)+(?:[A-Z]\b)/g,
-        m => m.replace(/\s+/g, "")
-    );
-
-    raw = raw.replace(/\s+/g, " ").trim();
-
-    console.log("CLEANED TEXT:", raw); // Debug
-    return raw;
-}
-
-
-// -------------------------
-// EXTRACT FLIGHTS (CZL - XXX ####)
-// -------------------------
-function extractFlights(cleaned) {
-    let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)];
-
-    console.log("FLIGHTS FOUND:", flights);
-
-    return flights.map(m => ({
-        number: m[1],
-        index: m.index
-    }));
-}
-
-
-// -------------------------
-// EXTRACT CREW LINES
-// -------------------------
-function extractCrewLines(cleaned) {
-
-    cleaned = cleaned.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
-
-    let lines = cleaned.split("\n");
-
-    let crew = lines
-        .map(l => l.trim())
-        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l));
-
-    console.log("CREW LINES:", crew);
-
-    return crew;
-}
-
-
-// -------------------------
-// ASSIGN CREW TO NEAREST CZL ABOVE
-// -------------------------
-function groupCrewByFlight(flights, crewLines, cleaned) {
-
-    let positionedCrew = crewLines.map(cl => {
-        return {
-            text: cl,
-            idx: cleaned.indexOf(cl)
-        };
-    });
-
-    let groups = {};
-    flights.forEach(f => (groups[f.number] = []));
-
-    for (let c of positionedCrew) {
-
-        let closest = null;
-        let minDist = Infinity;
-
-        for (let f of flights) {
-            if (f.index < c.idx) {
-                let d = c.idx - f.index;
-                if (d < minDist) {
-                    minDist = d;
-                    closest = f.number;
-                }
+        // 2) crew lines that contain '#'
+        if (line.includes("#")) {
+            const km = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
+            if (km) {
+                const start = km.index;
+                const lineFromKeyword = line.slice(start);
+                const cleaned = lineFromKeyword.split("#")[0].trim();
+                tempBlock.push(cleaned);
             }
         }
-
-        if (closest) groups[closest].push(c.text);
     }
 
-    console.log("GROUPED CREW:", groups);
-
-    return groups;
+    if (digit && tempBlock.length > 0) {
+        const sep = digit.length === 3 ? "-----" : "------";
+        const out = [];
+        out.push("");                // blank line before AH
+        out.push(`AH${digit}`);
+        out.push(sep);
+        for (let c of tempBlock) out.push(c);
+        return out;
+    } else {
+        return [];
+    }
 }
 
 
 // -------------------------
-// BUILD AH BLOCKS
+// PROCESS WHOLE RAW TEXT (same as Python copy_lines logic)
 // -------------------------
-function buildAHBlocks(groups) {
-    let blocks = [];
+function extractAllBlocks(raw) {
+    const lines = raw.split(/\r?\n/);
 
-    for (let fn of Object.keys(groups)) {
-        let sep = fn.length === 3 ? "-----" : "------";
+    const results = [];
+    let block = [];
+    let insideBlock = false;
 
-        blocks.push("");
-        blocks.push(`AH${fn}`);
-        blocks.push(sep);
-
-        for (let c of groups[fn]) {
-            blocks.push(c);
+    for (let line of lines) {
+        if (line.includes("CZL")) {
+            if (block.length > 0) {
+                results.push(...processBlock(block));
+                block = [];
+            }
+            insideBlock = true;
+        }
+        if (insideBlock) {
+            block.push(line);
         }
     }
 
-    return blocks;
+    if (block.length > 0) {
+        results.push(...processBlock(block));
+    }
+
+    return results;
 }
 
 
 // -------------------------
-// PROCESS PDF
+// MAIN FUNCTION
 // -------------------------
 async function processPDF() {
-    let file = document.getElementById("pdfInput").files[0];
-    if (!file) return alert("Select a PDF first!");
+    const file = document.getElementById("pdfInput").files[0];
+    if (!file) {
+        alert("Select a PDF first!");
+        return;
+    }
 
-    let raw = await readPDF(file);
-    let cleaned = cleanRawPDF(raw);
+    const raw = await readPDF(file);
 
-    let flights = extractFlights(cleaned);
-    let crewLines = extractCrewLines(cleaned);
+    // We do NOT remove "AIR ALGERIE..." etc.
+    // We just look for lines containing "CZL" exactly like Python.
+    const results = extractAllBlocks(raw);
 
-    let grouped = groupCrewByFlight(flights, crewLines, cleaned);
-    let blocks = buildAHBlocks(grouped);
-
-    let header = [
+    const header = [
         "DEAR ON DUTY",
         `PLEASE PROCEED WITH RESERVING SEATS FOR S1 AS LISTED BELOW FOR ${getDateForParagraph()}`
     ];
 
-    let footer = [
+    const footer = [
         "",
         "KIND REGARDS",
         "OPS CZL TEAM",
         "BOUTOUT"
     ];
 
-    let finalText = [...header, ...blocks, ...footer].join("\n").trim();
+    const finalText = [...header, ...results, ...footer].join("\n").trim();
     document.getElementById("resultBox").value = finalText;
 }
 
 
 // -------------------------
-// COPY TO CLIPBOARD
+// COPY BUTTON
 // -------------------------
 function copyResult() {
-    let text = document.getElementById("resultBox").value;
+    const text = document.getElementById("resultBox").value;
     navigator.clipboard.writeText(text);
     alert("Copied!");
 }
