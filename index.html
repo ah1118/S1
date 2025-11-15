@@ -14,33 +14,24 @@
 
     <div class="container">
 
-        <!-- App Title -->
         <h1 class="title">📄 CZL PDF Extractor</h1>
 
-        <!-- File Input -->
         <label class="label">Select the PDF file containing CZL flights:</label>
         <input id="pdfInput" type="file" accept="application/pdf" class="file-input" />
 
-        <!-- Main Button -->
-        <button onclick="processPDF()" class="btn success-btn">
-            Process PDF
+        <!-- ONE BUTTON ONLY -->
+        <button onclick="processAndCopy()" class="btn success-btn">
+            Process & Copy Output
         </button>
 
-        <!-- Output Box -->
         <textarea 
             id="resultBox" 
-            class="big-input" 
+            class="big-input"
             placeholder="Output will appear here..."
         ></textarea>
 
-        <!-- Secondary Button -->
-        <button onclick="copyResult()" class="btn copy-btn">
-            Copy Output
-        </button>
-
     </div>
 
-    <!-- Signature -->
     <div class="signature">By Boutout Med Oussama</div>
 
     <script src="script.js"></script>
