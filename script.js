@@ -37,12 +37,16 @@ async function readPDF(file) {
 
 
 // -------------------------
-// CLEAN RAW PDF TEXT
+// CLEAN RAW PDF TEXT  (IMPORTANT FIX HERE!!)
 // -------------------------
 function cleanRawPDF(raw) {
 
     // Remove airport table content
     raw = raw.replace(/AIR ALGERIE[\s\S]*?Total records[\s\S]*?\d+/gi, " ");
+
+    // 🔥 FIX PDF.js broken text (join separated uppercase letters)
+    // Example: "C P  B O U T A L E B" → "CP BOUTALEB"
+    raw = raw.replace(/(?:\b[A-Z]\s)+(?:[A-Z]\b)/g, m => m.replace(/\s+/g, ""));
 
     // Normalize spaces
     raw = raw.replace(/\s+/g, " ").trim();
