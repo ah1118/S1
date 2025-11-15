@@ -58,34 +58,17 @@ body {
     color: #ccc;
     border: 1px solid #2a2a2f;
     border-radius: 10px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;   /* reduced for balance */
     cursor: pointer;
 }
 
 /* --------------------------------------------------
-   Text Output Area
--------------------------------------------------- */
-.big-input {
-    width: 100%;
-    height: 280px;
-    background: #121214;
-    color: #fff;
-    border: 1px solid #2a2a2f;
-    border-radius: 10px;
-    padding: 14px;
-    font-size: 15px;
-    resize: vertical;
-    margin-top: 20px;
-    white-space: pre-wrap;
-}
-
-/* --------------------------------------------------
-   Buttons
+   Buttons (FIXED SPACING)
 -------------------------------------------------- */
 .btn {
     width: 100%;
     padding: 14px;
-    margin-top: 20px;
+    margin: 14px 0;   /* perfect equal space top & bottom */
     border: none;
     border-radius: 10px;
     font-size: 17px;
@@ -105,8 +88,21 @@ body {
     box-shadow: 0px 6px 18px rgba(34, 197, 94, 0.35);
 }
 
-.copy-btn:hover {
-    background: #1d4ed8;
+/* --------------------------------------------------
+   Text Output Area
+-------------------------------------------------- */
+.big-input {
+    width: 100%;
+    height: 280px;
+    background: #121214;
+    color: #fff;
+    border: 1px solid #2a2a2f;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 15px;
+    resize: vertical;
+    margin-top: 14px;   /* matched to button spacing */
+    white-space: pre-wrap;
 }
 
 /* --------------------------------------------------
@@ -170,4 +166,3 @@ body {
     opacity: 1;
     transform: translateY(0);
 }
-
