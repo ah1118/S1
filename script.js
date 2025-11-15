@@ -29,7 +29,7 @@ async function readPDF(file) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
 
-        text += content.items.map(it => it.str).join(" ") + "\n";
+        text += content.items.map(it => it.str).join(" ") + " ";
     }
 
     return text;
@@ -37,71 +37,95 @@ async function readPDF(file) {
 
 
 // -------------------------
-// CLEAN & SPLIT CREW LINES
+// CLEAN RAW PDF TEXT
 // -------------------------
-function extractCrewLines(raw) {
+function cleanRawPDF(raw) {
 
-    // Remove entire flight info segments EXCEPT crew codes
-    raw = raw.replace(/CZL\s*-[^-]*?J/g, " "); // remove route + aircraft + schedule
+    // Remove garbage airport tables
+    raw = raw.replace(/AIR ALGERIE[\s\S]*?records\s*:\s*\d+/gi, " ");
 
     // Normalize spaces
-    raw = raw.replace(/\s+/g, " ");
+    raw = raw.replace(/\s+/g, " ").trim();
 
-    // Insert NEWLINE before crew codes
-    raw = raw.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
-
-    let lines = raw.split("\n");
-
-    // Keep only CLEAN crew lines
-    return lines
-        .map(l => l.trim())
-        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l));
+    return raw;
 }
 
 
 // -------------------------
-// DETECT AH BLOCKS
+// Extract crew segments
 // -------------------------
-function detectBlocks(raw, crewLines) {
-    let results = [];
+function splitIntoCrewEntries(cleaned) {
+    // Insert newline before crew codes
+    cleaned = cleaned.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
 
-    // Find ALL flight numbers (3 or 4 digits)
-    let nums = raw.match(/\b\d{3,4}\b/g) || [];
+    // Split by newline
+    let lines = cleaned.split("\n");
 
-    // Unique them
-    nums = [...new Set(nums)];
+    // Keep only crew lines
+    let crew = lines.filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l.trim()));
 
-    nums.forEach(num => {
-        let sep = num.length === 3 ? "-----" : "------";
-        let block = [``, `AH${num}`, sep];
-
-        // Add all crew lines that belong to this block
-        crewLines.forEach(line => {
-            // Very important: each crew belongs to nearest AH flight number
-            // → Best simple rule: include all crew until next AH appears
-            // Since PDF.js merges, we include ALL — Python also did this
-            block.push(line);
-        });
-
-        results.push(...block);
-        crewLines = []; // reset for next AH
-    });
-
-    return results;
+    return crew;
 }
 
 
 // -------------------------
-// MAIN PROCESSING
+// Extract flight segments
+// -------------------------
+function extractFlights(cleaned) {
+    // Find all occurrences like: CZL - XXX ####
+    let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)]
+        .map(m => m[1]);
+
+    return flights;
+}
+
+
+// -------------------------
+// Build AH blocks
+// -------------------------
+function buildAHBlocks(flightNumbers, crewLines) {
+    let blocks = [];
+
+    let crewIndex = 0;
+
+    for (let fn of flightNumbers) {
+        let sep = fn.length === 3 ? "-----" : "------";
+
+        let block = ["", `AH${fn}`, sep];
+
+        // Add crew lines sequentially
+        while (crewIndex < crewLines.length) {
+            let l = crewLines[crewIndex];
+
+            // Stop when next flight appears in raw order
+            // (We already mapped flights sequentially)
+            if (/CZL\s*-\s*\w+\s+/.test(l)) break;
+
+            block.push(l);
+            crewIndex++;
+        }
+
+        blocks.push(...block);
+    }
+
+    return blocks;
+}
+
+
+// -------------------------
+// MAIN PROCESSOR
 // -------------------------
 async function processPDF() {
     let file = document.getElementById("pdfInput").files[0];
     if (!file) return alert("Select a PDF first!");
 
     let raw = await readPDF(file);
+    let cleaned = cleanRawPDF(raw);
 
-    let crewLines = extractCrewLines(raw);
-    let blocks = detectBlocks(raw, crewLines);
+    let crewLines = splitIntoCrewEntries(cleaned);
+    let flightNumbers = extractFlights(cleaned);
+
+    let blocks = buildAHBlocks(flightNumbers, crewLines);
 
     let header = [
         "DEAR ON DUTY",
