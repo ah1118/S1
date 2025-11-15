@@ -1,59 +1,94 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
-</head>
+function processPythonStyle(rawText) {
 
-<body>
+    const lines = rawText.split(/\r?\n/);
 
-<input type="file" id="pdfInput" accept="application/pdf" />
-<button onclick="processPDF()">Read PDF</button>
-<textarea id="resultBox" style="width:100%;height:400px;"></textarea>
+    let results = [];
+    let block = [];
+    let insideBlock = false;
 
-<script>
-// PDF.js Worker
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js";
+    for (let line of lines) {
 
+        if (line.includes("CZL -")) {  // start of block
+            if (block.length > 0) {
+                results.push(...processBlock(block));
+                block = [];
+            }
+            insideBlock = true;
+        }
 
-// -------------------------
-// READ PDF FULLY (Raw Dump)
-// -------------------------
-async function readWholePDF(file) {
-    const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-    let fullText = "";
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-
-        // Each item is a text piece on the PDF
-        const pageText = content.items.map(i => i.str).join(" ");
-
-        fullText += "=== PAGE " + i + " ===\n";
-        fullText += pageText + "\n\n";
+        if (insideBlock) {
+            block.push(line);
+        }
     }
 
-    return fullText;
+    // last block
+    if (block.length > 0) {
+        results.push(...processBlock(block));
+    }
+
+    return results;
+}
+
+// SAME LOGIC AS PYTHON process_block()
+function processBlock(blockLines) {
+    let tempBlock = [];
+    let digit = null;
+
+    for (let line of blockLines) {
+
+        // FIND 3–4 DIGIT FLIGHT NUMBER ON CZL LINE
+        if (line.includes("CZL -")) {
+            const m = line.match(/\b\d{3,4}\b/);
+            if (m) digit = m[0];
+        }
+
+        // CREW LINE MUST CONTAIN #
+        if (line.includes("#")) {
+            const km = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
+            if (km) {
+                const start = km.index;
+                const sliced = line.slice(start);
+                const cleaned = sliced.split("#")[0].trim();
+                tempBlock.push(cleaned);
+            }
+        }
+    }
+
+    if (digit && tempBlock.length > 0) {
+        const sep = digit.length === 3 ? "-----" : "------";
+
+        return [
+            "",
+            `AH${digit}`,
+            sep,
+            ...tempBlock
+        ];
+    }
+
+    return [];
 }
 
 
-// -------------------------
-// MAIN BUTTON ACTION
-// -------------------------
-async function processPDF() {
-    const file = document.getElementById("pdfInput").files[0];
-    if (!file) {
-        alert("Select a PDF first!");
-        return;
-    }
+// MAIN WRAPPER FOR BUTTON
+function buildFinalOutput() {
+    const raw = document.getElementById("rawInput").value;
 
-    let rawText = await readWholePDF(file);
+    let blocks = processPythonStyle(raw);
 
-    document.getElementById("resultBox").value = rawText;
+    let header = [
+        "DEAR ON DUTY",
+        `PLEASE PROCEED WITH RESERVING SEATS FOR S1 AS LISTED BELOW FOR ${getDateForParagraph()}`,
+        ""
+    ];
+
+    let footer = [
+        "",
+        "KIND REGARDS",
+        "OPS CZL TEAM",
+        "BOUTOUT"
+    ];
+
+    const finalText = [...header, ...blocks, ...footer].join("\n").trim();
+
+    document.getElementById("resultBox").value = finalText;
 }
-</script>
-
-</body>
-</html>
