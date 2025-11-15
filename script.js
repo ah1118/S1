@@ -26,7 +26,7 @@ function getDateForParagraph() {
 
 
 // -------------------------
-// READ PDF (PDF.js)
+// READ PDF RAW TEXT
 // -------------------------
 async function readPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
@@ -35,37 +35,51 @@ async function readPDF(file) {
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-
-        // Items already contain newlines in this PDF, so just join
-        text += content.items.map(it => it.str).join(" ") + "\n";
+        text += content.items.map(it => it.str).join(" ") + " ";
     }
 
-    console.log("RAW PDF TEXT:\n", text);
     return text;
 }
 
 
 // -------------------------
-// PROCESS ONE CZL BLOCK  (same as Python process_block)
+// REBUILD LINES — CRITICAL FIX
+// -------------------------
+function rebuildLines(raw) {
+
+    // Newline before flight blocks
+    raw = raw.replace(/(?=CZL\s*-\s*\w+\s+\d{3,4})/g, "\n");
+
+    // Newline before crew prefixes
+    raw = raw.replace(/\s+(?=(CP|FO|PC|CC|FA|FE)\b)/g, "\n");
+
+    // Remove repeating spaces
+    raw = raw.replace(/[ ]{2,}/g, " ");
+
+    return raw.trim();
+}
+
+
+// -------------------------
+// PROCESS ONE CZL BLOCK (Matches Python)
 // -------------------------
 function processBlock(blockLines) {
     let tempBlock = [];
     let digit = null;
 
     for (let line of blockLines) {
-        // 1) find flight number on CZL line (3 or 4 digits)
+
+        // flight number
         if (line.includes("CZL")) {
             const m = line.match(/\b\d{3,4}\b/);
             if (m) digit = m[0];
         }
 
-        // 2) crew lines that contain '#'
+        // crew with #
         if (line.includes("#")) {
             const km = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
             if (km) {
-                const start = km.index;
-                const lineFromKeyword = line.slice(start);
-                const cleaned = lineFromKeyword.split("#")[0].trim();
+                const cleaned = line.slice(km.index).split("#")[0].trim();
                 tempBlock.push(cleaned);
             }
         }
@@ -73,27 +87,28 @@ function processBlock(blockLines) {
 
     if (digit && tempBlock.length > 0) {
         const sep = digit.length === 3 ? "-----" : "------";
-        const out = [];
-        out.push("");                // blank line before AH
-        out.push(`AH${digit}`);
-        out.push(sep);
-        for (let c of tempBlock) out.push(c);
-        return out;
-    } else {
-        return [];
+
+        return [
+            "",
+            `AH${digit}`,
+            sep,
+            ...tempBlock
+        ];
     }
+
+    return [];
 }
 
 
 // -------------------------
-// PROCESS WHOLE RAW TEXT (same as Python copy_lines logic)
+// PROCESS WHOLE FILE
 // -------------------------
 function extractAllBlocks(raw) {
     const lines = raw.split(/\r?\n/);
 
     const results = [];
     let block = [];
-    let insideBlock = false;
+    let inside = false;
 
     for (let line of lines) {
         if (line.includes("CZL")) {
@@ -101,11 +116,10 @@ function extractAllBlocks(raw) {
                 results.push(...processBlock(block));
                 block = [];
             }
-            insideBlock = true;
+            inside = true;
         }
-        if (insideBlock) {
-            block.push(line);
-        }
+
+        if (inside) block.push(line);
     }
 
     if (block.length > 0) {
@@ -117,19 +131,16 @@ function extractAllBlocks(raw) {
 
 
 // -------------------------
-// MAIN FUNCTION
+// MAIN PROCESSOR
 // -------------------------
 async function processPDF() {
     const file = document.getElementById("pdfInput").files[0];
-    if (!file) {
-        alert("Select a PDF first!");
-        return;
-    }
+    if (!file) return alert("Select a PDF first!");
 
-    const raw = await readPDF(file);
+    let raw = await readPDF(file);
 
-    // We do NOT remove "AIR ALGERIE..." etc.
-    // We just look for lines containing "CZL" exactly like Python.
+    raw = rebuildLines(raw); // 🟥 IMPORTANT FIX
+
     const results = extractAllBlocks(raw);
 
     const header = [
