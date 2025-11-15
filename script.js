@@ -1,4 +1,6 @@
-// Get TODAY or TOMORROW 18:00 rule
+// -------------------------
+// DATE FUNCTION
+// -------------------------
 function getDateForParagraph() {
     let now = new Date();
     let d = new Date();
@@ -16,7 +18,9 @@ function getDateForParagraph() {
 }
 
 
-// Read PDF fully
+// -------------------------
+// READ PDF FULLY
+// -------------------------
 async function readPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
     let text = "";
@@ -25,80 +29,79 @@ async function readPDF(file) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
 
-        // Join items but preserve some spacing
-        let pageText = content.items.map(it => it.str).join(" ");
-        text += pageText + "\n";
+        text += content.items.map(it => it.str).join(" ") + "\n";
     }
 
     return text;
 }
 
 
-// Process each block (converted from Python logic)
-function processBlock(blockLines) {
-    let temp = [];
-    let digit = null;
+// -------------------------
+// CLEAN & SPLIT CREW LINES
+// -------------------------
+function extractCrewLines(raw) {
 
-    for (let line of blockLines) {
-        // Detect flight number
-        let m = line.match(/\b\d{3,4}\b/);
-        if (line.includes("CZL") && m) {
-            digit = m[0];
-        }
+    // Remove entire flight info segments EXCEPT crew codes
+    raw = raw.replace(/CZL\s*-[^-]*?J/g, " "); // remove route + aircraft + schedule
 
-        // Extract CP, FO, CC, FA, FE
-        if (line.includes("#")) {
-            let crew = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
-            if (crew) {
-                let sub = line.substring(crew.index).split("#")[0].trim();
-                temp.push(sub);
-            }
-        }
-    }
+    // Normalize spaces
+    raw = raw.replace(/\s+/g, " ");
 
-    if (!digit || temp.length === 0) return [];
+    // Insert NEWLINE before crew codes
+    raw = raw.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
 
-    let sep = digit.length === 3 ? "-----" : "------";
+    let lines = raw.split("\n");
 
-    return [
-        "",
-        `AH${digit}`,
-        sep,
-        ...temp
-    ];
+    // Keep only CLEAN crew lines
+    return lines
+        .map(l => l.trim())
+        .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l));
 }
 
 
-// MAIN PDF PROCESSOR
+// -------------------------
+// DETECT AH BLOCKS
+// -------------------------
+function detectBlocks(raw, crewLines) {
+    let results = [];
+
+    // Find ALL flight numbers (3 or 4 digits)
+    let nums = raw.match(/\b\d{3,4}\b/g) || [];
+
+    // Unique them
+    nums = [...new Set(nums)];
+
+    nums.forEach(num => {
+        let sep = num.length === 3 ? "-----" : "------";
+        let block = [``, `AH${num}`, sep];
+
+        // Add all crew lines that belong to this block
+        crewLines.forEach(line => {
+            // Very important: each crew belongs to nearest AH flight number
+            // → Best simple rule: include all crew until next AH appears
+            // Since PDF.js merges, we include ALL — Python also did this
+            block.push(line);
+        });
+
+        results.push(...block);
+        crewLines = []; // reset for next AH
+    });
+
+    return results;
+}
+
+
+// -------------------------
+// MAIN PROCESSING
+// -------------------------
 async function processPDF() {
     let file = document.getElementById("pdfInput").files[0];
-    if (!file) {
-        alert("Select a PDF file first!");
-        return;
-    }
+    if (!file) return alert("Select a PDF first!");
 
     let raw = await readPDF(file);
-    let lines = raw.split(/\n+/);
 
-    let results = [];
-    let block = [];
-    let inside = false;
-
-    for (let line of lines) {
-        if (line.includes("CZL")) {
-            if (block.length) {
-                results.push(...processBlock(block));
-                block = [];
-            }
-            inside = true;
-        }
-
-        if (inside) block.push(line);
-    }
-
-    if (block.length) {
-        results.push(...processBlock(block));
-    }
+    let crewLines = extractCrewLines(raw);
+    let blocks = detectBlocks(raw, crewLines);
 
     let header = [
         "DEAR ON DUTY",
@@ -112,13 +115,15 @@ async function processPDF() {
         "BOUTOUT"
     ];
 
-    let finalText = [...header, ...results, ...footer].join("\n").trim();
+    let finalText = [...header, ...blocks, ...footer].join("\n").trim();
 
     document.getElementById("resultBox").value = finalText;
 }
 
 
-// Copy to clipboard
+// -------------------------
+// COPY TO CLIPBOARD
+// -------------------------
 function copyResult() {
     const text = document.getElementById("resultBox").value;
     navigator.clipboard.writeText(text);
