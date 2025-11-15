@@ -35,6 +35,7 @@ async function readPDF(file) {
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
+        // Just concatenate all text with spaces – we'll parse it ourselves
         text += content.items.map(it => it.str).join(" ") + " ";
     }
 
@@ -43,84 +44,61 @@ async function readPDF(file) {
 
 
 // -------------------------
-// REBUILD LINES – SUPER IMPORTANT
+// PROCESS ONE CZL BLOCK  (string, not lines)
+// EXACT PYTHON LOGIC
 // -------------------------
-function rebuildLines(raw) {
+function processBlockString(blockStr) {
+    // 1) Find flight number after "CZL" (3–4 digits)
+    const flightMatch = blockStr.match(/CZL[\s\S]*?\b(\d{3,4})\b/);
+    if (!flightMatch) return []; // no flight number → ignore
 
-    // newline before CZL flight lines (ONLY valid ones)
-    raw = raw.replace(/(?=CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b)/g, "\n");
+    const digit = flightMatch[1];
 
-    // newline before crew prefixes
-    raw = raw.replace(/\s+(?=(CP|FO|PC|CC|FA|FE)\b)/g, "\n");
+    // 2) Find crew segments with '#'
+    // pattern: (CP|FO|PC|CC|FA|FE) ... #
+    const crewRegex = /\b(CP|FO|PC|CC|FA|FE)\b([\s\S]*?)#/g;
+    const tempBlock = [];
+    let m;
 
-    raw = raw.replace(/[ ]{2,}/g, " "); // normalize spaces
+    while ((m = crewRegex.exec(blockStr)) !== null) {
+        // m[1] = rank (CP/FO/...)
+        // m[2] = text until '#'
+        let crewText = (m[1] + m[2]).replace(/\s+/g, " ").trim();
+        tempBlock.push(crewText);
+    }
 
-    return raw.trim();
+    if (!tempBlock.length) return []; // no crew with # → ignore, like Python
+
+    const sep = digit.length === 3 ? "-----" : "------";
+
+    return [
+        "",
+        `AH${digit}`,
+        sep,
+        ...tempBlock
+    ];
 }
 
 
 // -------------------------
-// PROCESS ONE BLOCK (Python logic)
-// -------------------------
-function processBlock(blockLines) {
-    let tempBlock = [];
-    let digit = null;
-
-    for (let line of blockLines) {
-
-        // detect flight number only on VALID CZL flight line
-        if (/CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b/.test(line)) {
-            const m = line.match(/\b\d{3,4}\b/);
-            if (m) digit = m[0];
-        }
-
-        // crew with #
-        if (line.includes("#")) {
-            const km = line.match(/\b(CP|FO|PC|CC|FA|FE)\b/);
-            if (km) {
-                const cleaned = line.slice(km.index).split("#")[0].trim();
-                tempBlock.push(cleaned);
-            }
-        }
-    }
-
-    if (digit && tempBlock.length > 0) {
-        const sep = digit.length === 3 ? "-----" : "------";
-        return ["", `AH${digit}`, sep, ...tempBlock];
-    }
-
-    return [];
-}
-
-
-// -------------------------
-// EXTRACT ALL BLOCKS (Python logic)
+// SPLIT RAW INTO CZL BLOCKS (EXACT PYTHON IDEA)
 // -------------------------
 function extractAllBlocks(raw) {
-    const lines = raw.split(/\r?\n/);
+    const results = [];
 
-    let results = [];
-    let block = [];
-    let inside = false;
+    // Find every occurrence of "CZL" in the raw text
+    const czlMatches = [...raw.matchAll(/CZL/g)];
+    if (!czlMatches.length) return results;
 
-    for (let line of lines) {
+    for (let i = 0; i < czlMatches.length; i++) {
+        const start = czlMatches[i].index;
+        const end = (i + 1 < czlMatches.length) ? czlMatches[i + 1].index : raw.length;
+        const blockStr = raw.slice(start, end);
 
-        // VALID CZL HEADER (prevents fake flights)
-        const isFlightLine = /CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b/.test(line);
-
-        if (isFlightLine) {
-            if (block.length > 0) {
-                results.push(...processBlock(block));
-                block = [];
-            }
-            inside = true;
+        const blockLines = processBlockString(blockStr);
+        if (blockLines.length) {
+            results.push(...blockLines);
         }
-
-        if (inside) block.push(line);
-    }
-
-    if (block.length > 0) {
-        results.push(...processBlock(block));
     }
 
     return results;
@@ -132,14 +110,16 @@ function extractAllBlocks(raw) {
 // -------------------------
 async function processPDF() {
     const file = document.getElementById("pdfInput").files[0];
-    if (!file) return alert("Select a PDF first!");
+    if (!file) {
+        alert("Select a PDF first!");
+        return;
+    }
 
     let raw = await readPDF(file);
 
-    // FIX broken PDF.js structure
-    raw = rebuildLines(raw);
+    // Normalize spaces a bit (optional)
+    raw = raw.replace(/[ ]{2,}/g, " ").trim();
 
-    // Extract blocks identical to Python
     const results = extractAllBlocks(raw);
 
     const header = [
@@ -155,7 +135,6 @@ async function processPDF() {
     ];
 
     const finalText = [...header, ...results, ...footer].join("\n").trim();
-
     document.getElementById("resultBox").value = finalText;
 }
 
