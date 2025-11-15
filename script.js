@@ -1,4 +1,11 @@
 // -------------------------
+// PDF.js WORKER (MANDATORY)
+// -------------------------
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js";
+
+
+// -------------------------
 // DATE FUNCTION
 // -------------------------
 function getDateForParagraph() {
@@ -32,25 +39,27 @@ async function readPDF(file) {
         text += content.items.map(it => it.str).join(" ") + " ";
     }
 
+    console.log("RAW PDF TEXT:", text);   // Debug
     return text;
 }
 
 
 // -------------------------
-// CLEAN RAW PDF TEXT  (IMPORTANT FIX HERE!!)
+// CLEAN RAW PDF TEXT (IMPORTANT FIX)
 // -------------------------
 function cleanRawPDF(raw) {
 
-    // Remove airport table content
     raw = raw.replace(/AIR ALGERIE[\s\S]*?Total records[\s\S]*?\d+/gi, " ");
 
-    // 🔥 FIX PDF.js broken text (join separated uppercase letters)
+    // FIX PDF.js BROKEN TEXT:
     // Example: "C P  B O U T A L E B" → "CP BOUTALEB"
-    raw = raw.replace(/(?:\b[A-Z]\s)+(?:[A-Z]\b)/g, m => m.replace(/\s+/g, ""));
+    raw = raw.replace(/(?:\b[A-Z]\s)+(?:[A-Z]\b)/g,
+        m => m.replace(/\s+/g, "")
+    );
 
-    // Normalize spaces
     raw = raw.replace(/\s+/g, " ").trim();
 
+    console.log("CLEANED TEXT:", raw); // Debug
     return raw;
 }
 
@@ -60,9 +69,12 @@ function cleanRawPDF(raw) {
 // -------------------------
 function extractFlights(cleaned) {
     let flights = [...cleaned.matchAll(/CZL\s*-\s*\w+\s+(\d{3,4})/g)];
+
+    console.log("FLIGHTS FOUND:", flights);
+
     return flights.map(m => ({
-        number: m[1],   // 6190, 6194, 6027, etc.
-        index: m.index  // position in text
+        number: m[1],
+        index: m.index
     }));
 }
 
@@ -72,15 +84,15 @@ function extractFlights(cleaned) {
 // -------------------------
 function extractCrewLines(cleaned) {
 
-    // Restore line breaks artificially
     cleaned = cleaned.replace(/(CP|FO|PC|CC|FA|FE)\s+/g, "\n$1 ");
 
     let lines = cleaned.split("\n");
 
-    // Crew lines detected by rank code only
     let crew = lines
         .map(l => l.trim())
         .filter(l => /^(CP|FO|PC|CC|FA|FE)\b/.test(l));
+
+    console.log("CREW LINES:", crew);
 
     return crew;
 }
@@ -92,31 +104,34 @@ function extractCrewLines(cleaned) {
 function groupCrewByFlight(flights, crewLines, cleaned) {
 
     let positionedCrew = crewLines.map(cl => {
-        let idx = cleaned.indexOf(cl);
-        return { idx, text: cl };
+        return {
+            text: cl,
+            idx: cleaned.indexOf(cl)
+        };
     });
 
     let groups = {};
-    flights.forEach(f => { groups[f.number] = []; });
+    flights.forEach(f => (groups[f.number] = []));
 
     for (let c of positionedCrew) {
+
         let closest = null;
-        let closestDist = Infinity;
+        let minDist = Infinity;
 
         for (let f of flights) {
             if (f.index < c.idx) {
-                let dist = c.idx - f.index;
-                if (dist < closestDist) {
-                    closestDist = dist;
+                let d = c.idx - f.index;
+                if (d < minDist) {
+                    minDist = d;
                     closest = f.number;
                 }
             }
         }
 
-        if (closest) {
-            groups[closest].push(c.text);
-        }
+        if (closest) groups[closest].push(c.text);
     }
+
+    console.log("GROUPED CREW:", groups);
 
     return groups;
 }
@@ -135,8 +150,8 @@ function buildAHBlocks(groups) {
         blocks.push(`AH${fn}`);
         blocks.push(sep);
 
-        for (let crew of groups[fn]) {
-            blocks.push(crew);
+        for (let c of groups[fn]) {
+            blocks.push(c);
         }
     }
 
@@ -145,7 +160,7 @@ function buildAHBlocks(groups) {
 
 
 // -------------------------
-// MAIN FUNCTION
+// PROCESS PDF
 // -------------------------
 async function processPDF() {
     let file = document.getElementById("pdfInput").files[0];
@@ -173,16 +188,15 @@ async function processPDF() {
     ];
 
     let finalText = [...header, ...blocks, ...footer].join("\n").trim();
-
     document.getElementById("resultBox").value = finalText;
 }
 
 
 // -------------------------
-// COPY BUTTON
+// COPY TO CLIPBOARD
 // -------------------------
 function copyResult() {
-    const text = document.getElementById("resultBox").value;
+    let text = document.getElementById("resultBox").value;
     navigator.clipboard.writeText(text);
     alert("Copied!");
 }
