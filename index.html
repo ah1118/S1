@@ -2,36 +2,47 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>CZL PDF Extractor</title>
 
-    <!-- PDF.js -->
+    <link rel="stylesheet" href="style.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
-
-    <!-- CSS -->
-    <link rel="stylesheet" href="style.css">
-
-    <!-- JS -->
-    <script defer src="script.js"></script>
 </head>
 
 <body>
 
-<div class="container">
+    <div class="container">
 
-    <h1><span>🛫</span>CZL PDF Extractor</h1>
+        <!-- App Title -->
+        <h1 class="title">📄 CZL PDF Extractor</h1>
 
-    <input type="file" id="pdfInput" accept="application/pdf" class="file-input">
+        <!-- File Input -->
+        <label class="label">Select the PDF file containing CZL flights:</label>
+        <input id="pdfInput" type="file" accept="application/pdf" class="file-input" />
 
-    <button class="btn" onclick="processPDF()">Process PDF</button>
-    <button class="btn small-btn" onclick="copyResult()">Copy Output</button>
+        <!-- Main Button -->
+        <button onclick="processPDF()" class="btn success-btn">
+            Process PDF
+        </button>
 
-    <textarea id="resultBox">Output will appear here...</textarea>
+        <!-- Output Box -->
+        <textarea 
+            id="resultBox" 
+            class="big-input" 
+            placeholder="Output will appear here..."
+        ></textarea>
 
-</div>
+        <!-- Secondary Button -->
+        <button onclick="copyResult()" class="btn copy-btn">
+            Copy Output
+        </button>
 
-<footer>
-    By Boutout Med Oussama
-</footer>
+    </div>
 
+    <!-- Signature -->
+    <div class="signature">By Boutout Med Oussama</div>
+
+    <script src="script.js"></script>
 </body>
 </html>
