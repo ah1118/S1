@@ -12,7 +12,6 @@ async function readPDF(file) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
 
-        // group text by Y position
         const lines = {};
         content.items.forEach((item) => {
             const y = Math.round(item.transform[5]);
@@ -20,7 +19,6 @@ async function readPDF(file) {
             lines[y].push(item.str);
         });
 
-        // sort top → bottom
         const sortedY = Object.keys(lines).sort((a, b) => b - a);
 
         sortedY.forEach((y) => {
@@ -35,7 +33,7 @@ async function readPDF(file) {
 }
 
 // ------------------------------------------
-// PARSE CZL BLOCKS EXACTLY LIKE PYTHON DID
+// PARSE CZL BLOCKS
 // ------------------------------------------
 function extractBlocks(text) {
     const lines = text.split(/\r?\n/);
@@ -69,13 +67,11 @@ function processBlock(blockLines) {
     let crew = [];
 
     for (let line of blockLines) {
-        // extract flight number (3-4 digits)
         if (line.includes("CZL -")) {
             const m = line.match(/\b\d{3,4}\b/);
             if (m) flightNo = m[0];
         }
 
-        // extract only crew lines with "#"
         if (line.includes("#")) {
             const m = line.match(/\b(CP|FO|PC|CC|FA)\b/);
             if (!m) continue;
@@ -96,14 +92,14 @@ function processBlock(blockLines) {
 }
 
 // -------------------------
-// MAIN FUNCTION
+// MAIN PROCESS FUNCTION
 // -------------------------
 async function processPDF() {
     const file = document.getElementById("pdfInput").files[0];
-    if (!file) return showToast("⚠️ Please select a PDF", true);
+    if (!file) return;
 
     const raw = await readPDF(file);
-    document.getElementById("resultBox").value = raw; // TEMP: show raw text
+    document.getElementById("resultBox").value = raw;
 
     const blocks = extractBlocks(raw);
 
@@ -125,38 +121,19 @@ async function processPDF() {
 }
 
 // -------------------------
-// TOAST FUNCTION
+// BUTTON FEEDBACK (new)
 // -------------------------
-function showToast(message = "Copied ✓", isError = false) {
-    const toast = document.getElementById("toast");
+function flashCopiedOnButton() {
+    const btn = document.querySelector(".success-btn");
+    const old = btn.innerText;
 
-    toast.textContent = message;
-
-    if (isError) {
-        toast.style.background = "rgba(255, 60, 60, 0.25)";
-        toast.style.color = "#ff5757";
-        toast.style.borderColor = "rgba(255, 60, 60, 0.35)";
-    } else {
-        toast.style.background = "rgba(34, 197, 94, 0.25)";
-        toast.style.color = "#22c55e";
-        toast.style.borderColor = "rgba(34, 197, 94, 0.35)";
-    }
-
-    toast.classList.add("show");
+    btn.innerText = "Copied ✓";
+    btn.style.background = "#16a34a";
 
     setTimeout(() => {
-        toast.classList.remove("show");
-    }, 1800);
-}
-
-// -------------------------
-// COPY RESULT
-// -------------------------
-function copyResult() {
-    navigator.clipboard.writeText(
-        document.getElementById("resultBox").value
-    );
-    showToast("Copied ✓");
+        btn.innerText = old;
+        btn.style.background = "#22c55e";
+    }, 1200);
 }
 
 // -------------------------
@@ -164,5 +141,10 @@ function copyResult() {
 // -------------------------
 async function processAndCopy() {
     await processPDF();
-    copyResult();
+
+    navigator.clipboard.writeText(
+        document.getElementById("resultBox").value
+    );
+
+    flashCopiedOnButton();
 }
