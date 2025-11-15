@@ -26,7 +26,7 @@ function getDateForParagraph() {
 
 
 // -------------------------
-// READ PDF RAW TEXT
+// READ PDF (PDF.js)
 // -------------------------
 async function readPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
@@ -43,25 +43,24 @@ async function readPDF(file) {
 
 
 // -------------------------
-// REBUILD LINES — CRITICAL FIX
+// REBUILD LINES – SUPER IMPORTANT
 // -------------------------
 function rebuildLines(raw) {
 
-    // Newline before flight blocks
-    raw = raw.replace(/(?=CZL\s*-\s*\w+\s+\d{3,4})/g, "\n");
+    // newline before CZL flight lines (ONLY valid ones)
+    raw = raw.replace(/(?=CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b)/g, "\n");
 
-    // Newline before crew prefixes
+    // newline before crew prefixes
     raw = raw.replace(/\s+(?=(CP|FO|PC|CC|FA|FE)\b)/g, "\n");
 
-    // Remove repeating spaces
-    raw = raw.replace(/[ ]{2,}/g, " ");
+    raw = raw.replace(/[ ]{2,}/g, " "); // normalize spaces
 
     return raw.trim();
 }
 
 
 // -------------------------
-// PROCESS ONE CZL BLOCK (Matches Python)
+// PROCESS ONE BLOCK (Python logic)
 // -------------------------
 function processBlock(blockLines) {
     let tempBlock = [];
@@ -69,8 +68,8 @@ function processBlock(blockLines) {
 
     for (let line of blockLines) {
 
-        // flight number
-        if (line.includes("CZL")) {
+        // detect flight number only on VALID CZL flight line
+        if (/CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b/.test(line)) {
             const m = line.match(/\b\d{3,4}\b/);
             if (m) digit = m[0];
         }
@@ -87,13 +86,7 @@ function processBlock(blockLines) {
 
     if (digit && tempBlock.length > 0) {
         const sep = digit.length === 3 ? "-----" : "------";
-
-        return [
-            "",
-            `AH${digit}`,
-            sep,
-            ...tempBlock
-        ];
+        return ["", `AH${digit}`, sep, ...tempBlock];
     }
 
     return [];
@@ -101,17 +94,21 @@ function processBlock(blockLines) {
 
 
 // -------------------------
-// PROCESS WHOLE FILE
+// EXTRACT ALL BLOCKS (Python logic)
 // -------------------------
 function extractAllBlocks(raw) {
     const lines = raw.split(/\r?\n/);
 
-    const results = [];
+    let results = [];
     let block = [];
     let inside = false;
 
     for (let line of lines) {
-        if (line.includes("CZL")) {
+
+        // VALID CZL HEADER (prevents fake flights)
+        const isFlightLine = /CZL\s*-\s*[A-Z]{3}\s+\d{3,4}\b/.test(line);
+
+        if (isFlightLine) {
             if (block.length > 0) {
                 results.push(...processBlock(block));
                 block = [];
@@ -139,8 +136,10 @@ async function processPDF() {
 
     let raw = await readPDF(file);
 
-    raw = rebuildLines(raw); // 🟥 IMPORTANT FIX
+    // FIX broken PDF.js structure
+    raw = rebuildLines(raw);
 
+    // Extract blocks identical to Python
     const results = extractAllBlocks(raw);
 
     const header = [
@@ -156,6 +155,7 @@ async function processPDF() {
     ];
 
     const finalText = [...header, ...results, ...footer].join("\n").trim();
+
     document.getElementById("resultBox").value = finalText;
 }
 
