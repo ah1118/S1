@@ -1,6 +1,36 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js";
 
+// ------------------------------------------
+// DYNAMIC DATE (GMT+1) -> 15NOV25
+// Rule:
+// - If GMT+1 hour == 0 (after midnight) => use today
+// - Else (01..23) => use tomorrow
+// ------------------------------------------
+function getCZLDateGMT1() {
+    const now = new Date();
+
+    // Convert local time to UTC first, then add +1 hour
+    const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000;
+    const gmt1 = new Date(utcMs + 1 * 60 * 60 * 1000);
+
+    const hour = gmt1.getHours();
+
+    // Choose date according to rule
+    const d = new Date(gmt1);
+    if (hour !== 0) {
+        d.setDate(d.getDate() + 1); // before midnight -> tomorrow
+    }
+
+    // Format DDMMMYY (e.g., 15NOV25)
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    const mon = months[d.getMonth()];
+    const year = String(d.getFullYear()).slice(-2);
+
+    return `${day}${mon}${year}`;
+}
+
 // ---------------------
 // SMART PDF TEXT READER
 // ---------------------
@@ -83,12 +113,7 @@ function processBlock(blockLines) {
     if (!flightNo || crew.length === 0) return [];
 
     const sep = flightNo.length === 3 ? "-----" : "------";
-    return [
-        "",
-        `AH${flightNo}`,
-        sep,
-        ...crew
-    ];
+    return ["", `AH${flightNo}`, sep, ...crew];
 }
 
 // -------------------------
@@ -103,9 +128,11 @@ async function processPDF() {
 
     const blocks = extractBlocks(raw);
 
+    const dynamicDate = getCZLDateGMT1();
+
     const header = [
         "DEAR ON DUTY",
-        "PLEASE PROCEED WITH RESERVING SEATS FOR S1 AS LISTED BELOW FOR 15NOV25",
+        `PLEASE PROCEED WITH RESERVING SEATS FOR S1 AS LISTED BELOW FOR ${dynamicDate}`,
         ""
     ];
 
