@@ -1,3 +1,11 @@
+const PASSWORD = "MySecret123";
+
+const entered = prompt("Enter password:");
+
+if (entered !== PASSWORD) {
+    document.body.innerHTML = "<h2>Access denied</h2>";
+    throw new Error("Unauthorized");
+}
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js";
 
