@@ -1,4 +1,4 @@
-const PASSWORD = "MySecret123";
+const PASSWORD = "1061993";
 
 const entered = prompt("Enter password:");
 
